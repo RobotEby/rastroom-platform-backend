@@ -1,0 +1,264 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AppRole {
+  admin
+  operator
+  operador
+  montagem
+  supervisor
+}
+
+enum OrderStatus {
+  rascunho
+  em_producao
+  montagem
+  pronto
+  expedido
+}
+
+enum ProcessType {
+  corte
+  lixamento
+  pintura
+  borda
+  montagem
+  expedicao
+}
+
+enum ProcessLogStatus {
+  aguardando
+  em_execucao
+  concluido
+  alerta
+}
+
+enum NotificationType {
+  order_expedited
+  kit_completed
+  process_alert
+}
+
+enum NotificationStatus {
+  pending
+  sent
+  failed
+}
+
+model User {
+  id                     String         @id @default(uuid()) @db.Uuid
+  email                  String         @unique
+  password_hash          String
+  full_name              String?
+  roles                  AppRole[]      @default([operator])
+  is_active              Boolean        @default(true)
+  refresh_token_hash     String?
+  reset_token_hash       String?
+  reset_token_expires_at DateTime?
+  created_at             DateTime       @default(now())
+  updated_at             DateTime       @updatedAt @default(now())
+  deleted_at             DateTime?
+
+  orders_created Order[]        @relation("OrderCreator")
+  execution_logs ExecutionLog[]
+  uploads        Upload[]
+  audit_logs     AuditLog[]
+
+  @@index([email])
+  @@index([deleted_at])
+  @@map("users")
+}
+
+model Client {
+  id         String    @id @default(uuid()) @db.Uuid
+  name       String
+  email      String?
+  phone      String?
+  address    String?
+  notes      String?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt @default(now())
+  deleted_at DateTime?
+
+  orders Order[]
+
+  @@index([name])
+  @@index([email])
+  @@index([deleted_at])
+  @@map("clients")
+}
+
+model Order {
+  id                 String      @id @default(uuid()) @db.Uuid
+  client_id          String      @db.Uuid
+  code               String      @unique
+  description        String?
+  status             OrderStatus @default(rascunho)
+  estimated_delivery DateTime?
+  created_by         String?     @db.Uuid
+  created_at         DateTime    @default(now())
+  updated_at         DateTime    @updatedAt @default(now())
+  deleted_at         DateTime?
+
+  clients       Client         @relation(fields: [client_id], references: [id], onDelete: Restrict)
+  users         User?          @relation("OrderCreator", fields: [created_by], references: [id], onDelete: SetNull)
+  furniture     Furniture[]
+  notifications Notification[]
+
+  @@index([client_id])
+  @@index([status])
+  @@index([estimated_delivery])
+  @@index([deleted_at])
+  @@map("orders")
+}
+
+model Furniture {
+  id                         String    @id @default(uuid()) @db.Uuid
+  order_id                   String    @db.Uuid
+  name                       String
+  description                String?
+  furniture_type             String?
+  estimated_lead_time_hours  Int       @default(0)
+  created_at                 DateTime  @default(now())
+  updated_at                 DateTime  @updatedAt @default(now())
+  deleted_at                 DateTime?
+
+  orders Order  @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  parts  Part[]
+
+  @@index([order_id])
+  @@index([name])
+  @@index([deleted_at])
+  @@map("furniture")
+}
+
+model Part {
+  id                String       @id @default(uuid()) @db.Uuid
+  furniture_id      String       @db.Uuid
+  parent_part_id    String?      @db.Uuid
+  code              String       @unique
+  name              String
+  is_mother_part    Boolean      @default(false)
+  width_mm          Float?
+  height_mm         Float?
+  depth_mm          Float?
+  material          String?
+  finish_color      String?
+  finish_color_hex  String?
+  finish_type       String?
+  paint_recipe      String?
+  edge_banding_info String?
+  current_process   ProcessType?
+  qr_code_data      String       @unique
+  created_at        DateTime     @default(now())
+  updated_at        DateTime     @updatedAt @default(now())
+  deleted_at        DateTime?
+
+  furniture   Furniture @relation(fields: [furniture_id], references: [id], onDelete: Cascade)
+  parent_part Part?     @relation("PartChildren", fields: [parent_part_id], references: [id], onDelete: SetNull)
+  child_parts Part[]    @relation("PartChildren")
+  processes   Process[]
+
+  @@index([furniture_id])
+  @@index([parent_part_id])
+  @@index([code])
+  @@index([current_process])
+  @@index([deleted_at])
+  @@map("parts")
+}
+
+model Process {
+  id                     String       @id @default(uuid()) @db.Uuid
+  part_id                String       @db.Uuid
+  process_type           ProcessType
+  sequence_order         Int
+  estimated_time_minutes Int?
+  created_at             DateTime     @default(now())
+  updated_at             DateTime     @updatedAt @default(now())
+
+  parts          Part           @relation(fields: [part_id], references: [id], onDelete: Cascade)
+  execution_logs ExecutionLog[]
+
+  @@unique([part_id, sequence_order])
+  @@index([part_id])
+  @@index([process_type])
+  @@map("processes")
+}
+
+model ExecutionLog {
+  id              String           @id @default(uuid()) @db.Uuid
+  process_id      String           @db.Uuid
+  operator_id     String?          @db.Uuid
+  status          ProcessLogStatus @default(em_execucao)
+  started_at      DateTime         @default(now())
+  finished_at     DateTime?
+  elapsed_seconds Int?
+  notes           String?
+  created_at      DateTime         @default(now())
+  updated_at      DateTime         @updatedAt @default(now())
+
+  processes Process @relation(fields: [process_id], references: [id], onDelete: Cascade)
+  users     User?   @relation(fields: [operator_id], references: [id], onDelete: SetNull)
+
+  @@index([process_id])
+  @@index([operator_id])
+  @@index([status])
+  @@index([started_at])
+  @@map("execution_logs")
+}
+
+model Notification {
+  id              String             @id @default(uuid()) @db.Uuid
+  order_id        String?            @db.Uuid
+  recipient_email String?
+  type            NotificationType
+  status          NotificationStatus @default(pending)
+  message         String
+  sent_at         DateTime?
+  created_at      DateTime           @default(now())
+  updated_at      DateTime           @updatedAt @default(now())
+
+  orders Order? @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([order_id])
+  @@index([status])
+  @@map("notifications")
+}
+
+model Upload {
+  id            String   @id @default(uuid()) @db.Uuid
+  owner_id      String?  @db.Uuid
+  original_name String
+  filename      String
+  mime_type     String
+  size_bytes    Int
+  url           String
+  created_at    DateTime @default(now())
+
+  users User? @relation(fields: [owner_id], references: [id], onDelete: SetNull)
+
+  @@index([owner_id])
+  @@map("uploads")
+}
+
+model AuditLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  actor_id   String?  @db.Uuid
+  action     String
+  entity     String
+  entity_id  String?
+  metadata   Json?
+  created_at DateTime @default(now())
+
+  users User? @relation(fields: [actor_id], references: [id], onDelete: SetNull)
+
+  @@index([actor_id])
+  @@index([entity, entity_id])
+  @@map("audit_logs")
+}

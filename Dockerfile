@@ -23,4 +23,4 @@ COPY package*.json ./
 
 EXPOSE 10000
 
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run prisma:seed && node dist/main.js"]
+CMD ["sh", "-c", "npx prisma migrate deploy && node dist/main.js"]

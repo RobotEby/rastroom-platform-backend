@@ -47,28 +47,29 @@ export class HttpExceptionFilter implements ExceptionFilter {
 
     if (exception instanceof Prisma.PrismaClientKnownRequestError) {
       if (exception.code === "P2002") {
+        const field = Array.isArray(exception.meta?.target)
+          ? exception.meta?.target.join(",")
+          : "resource";
         return {
           statusCode: HttpStatus.CONFLICT,
-          message: "Conflict",
+          message: `Já existe um registro com o mesmo valor em ${field}`,
           errors: [
             {
-              field: Array.isArray(exception.meta?.target)
-                ? exception.meta?.target.join(",")
-                : "resource",
-              message: "Value already exists"
+              field,
+              message: "Valor já cadastrado"
             }
           ]
         };
       }
 
       if (exception.code === "P2025") {
-        return { statusCode: HttpStatus.NOT_FOUND, message: "Resource not found" };
+        return { statusCode: HttpStatus.NOT_FOUND, message: "Registro não encontrado" };
       }
     }
 
     return {
       statusCode: HttpStatus.INTERNAL_SERVER_ERROR,
-      message: "Internal server error"
+      message: "Erro interno do servidor"
     };
   }
 }

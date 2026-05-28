@@ -6,6 +6,10 @@ import { AuthService } from "./auth.service";
 
 describe("AuthService", () => {
   const prisma = {
+    organization: {
+      findUnique: jest.fn(),
+      create: jest.fn()
+    },
     user: {
       findUnique: jest.fn(),
       findFirst: jest.fn(),
@@ -28,13 +32,23 @@ describe("AuthService", () => {
     jwt.signAsync.mockResolvedValueOnce("access-token").mockResolvedValueOnce("refresh-token");
   });
 
-  it("registers a new operator user and hides sensitive fields", async () => {
+  it("registers a new workspace owner and hides sensitive fields", async () => {
     prisma.user.findUnique.mockResolvedValue(null);
+    prisma.organization.findUnique.mockResolvedValue(null);
+    prisma.organization.create.mockResolvedValue({
+      id: "organization-id",
+      name: "Novo Usuario Workspace",
+      slug: "novo-rastroom-local",
+      is_active: true,
+      created_at: new Date(),
+      updated_at: new Date()
+    });
     prisma.user.create.mockImplementation(async ({ data }) => ({
       id: "user-id",
       email: data.email,
       full_name: data.full_name,
       roles: data.roles,
+      organization_id: data.organization_id,
       password_hash: data.password_hash,
       refresh_token_hash: null,
       reset_token_hash: null,
@@ -56,7 +70,8 @@ describe("AuthService", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           email: "novo@rastroom.local",
-          roles: ["operator"]
+          organization_id: "organization-id",
+          roles: ["owner", "admin", "supervisor"]
         })
       })
     );

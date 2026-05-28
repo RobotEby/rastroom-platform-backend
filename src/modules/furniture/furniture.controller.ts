@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { CurrentUser, RequestUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -15,33 +16,33 @@ import { FurnitureService } from "./furniture.service";
 export class FurnitureController {
   constructor(private readonly furniture: FurnitureService) {}
 
-  @Roles("admin", "supervisor", "operator", "operador")
+  @Roles("owner", "admin", "supervisor", "operator", "operador", "maker", "engineer", "developer")
   @Get()
-  findAll(@Query() query: PaginationQueryDto & { order_id?: string }) {
-    return this.furniture.findAll(query);
+  findAll(@Query() query: PaginationQueryDto & { order_id?: string }, @CurrentUser() user: RequestUser) {
+    return this.furniture.findAll(query, user.organization_id);
   }
 
-  @Roles("admin", "supervisor", "operator", "operador")
+  @Roles("owner", "admin", "supervisor", "operator", "operador", "maker", "engineer", "developer")
   @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.furniture.findOne(id);
+  findOne(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.furniture.findOne(id, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "engineer", "developer", "maker")
   @Post()
-  create(@Body() dto: CreateFurnitureDto) {
-    return this.furniture.create(dto);
+  create(@Body() dto: CreateFurnitureDto, @CurrentUser() user: RequestUser) {
+    return this.furniture.create(dto, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "engineer", "developer")
   @Patch(":id")
-  update(@Param("id") id: string, @Body() dto: UpdateFurnitureDto) {
-    return this.furniture.update(id, dto);
+  update(@Param("id") id: string, @Body() dto: UpdateFurnitureDto, @CurrentUser() user: RequestUser) {
+    return this.furniture.update(id, dto, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "developer")
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.furniture.remove(id);
+  remove(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.furniture.remove(id, user.organization_id);
   }
 }

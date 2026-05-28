@@ -1,5 +1,6 @@
 import { Controller, Get, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { CurrentUser, RequestUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
 import { RolesGuard } from "../../common/guards/roles.guard";
@@ -12,57 +13,63 @@ import { DashboardService } from "./dashboard.service";
 export class DashboardController {
   constructor(private readonly dashboard: DashboardService) {}
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
+  @Get("management")
+  management(@CurrentUser() user: RequestUser) {
+    return this.dashboard.management(user.organization_id);
+  }
+
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("summary")
-  summary() {
-    return this.dashboard.summary();
+  summary(@CurrentUser() user: RequestUser) {
+    return this.dashboard.summary(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("orders-count")
-  ordersCount() {
-    return this.dashboard.ordersCount();
+  ordersCount(@CurrentUser() user: RequestUser) {
+    return this.dashboard.ordersCount(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("parts-count")
-  partsCount() {
-    return this.dashboard.partsCount();
+  partsCount(@CurrentUser() user: RequestUser) {
+    return this.dashboard.partsCount(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("clients-count")
-  clientsCount() {
-    return this.dashboard.clientsCount();
+  clientsCount(@CurrentUser() user: RequestUser) {
+    return this.dashboard.clientsCount(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("pending-parts")
-  pendingParts() {
-    return this.dashboard.pendingParts();
+  pendingParts(@CurrentUser() user: RequestUser) {
+    return this.dashboard.pendingParts(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("parts-by-process")
-  partsByProcess() {
-    return this.dashboard.partsByProcess();
+  partsByProcess(@CurrentUser() user: RequestUser) {
+    return this.dashboard.partsByProcess(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("recent-logs")
-  recentLogs() {
-    return this.dashboard.recentLogs();
+  recentLogs(@CurrentUser() user: RequestUser) {
+    return this.dashboard.recentLogs(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("avg-times")
-  avgTimes() {
-    return this.dashboard.avgTimes();
+  avgTimes(@CurrentUser() user: RequestUser) {
+    return this.dashboard.avgTimes(user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("admin", "owner", "supervisor", "engineer", "developer")
   @Get("alerts")
-  alerts() {
-    return this.dashboard.alerts();
+  alerts(@CurrentUser() user: RequestUser) {
+    return this.dashboard.alerts(user.organization_id);
   }
 }

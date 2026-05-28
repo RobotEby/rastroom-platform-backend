@@ -26,7 +26,17 @@ function validationExceptionFactory(errors: any[]) {
   });
 }
 
+function assertProductionSecrets() {
+  if (process.env.NODE_ENV === "production") {
+    const unsafe = ["change-me-access-secret", "change-me-refresh-secret", "dev-access-secret", "dev-refresh-secret", undefined, ""];
+    if (unsafe.includes(process.env.JWT_ACCESS_SECRET) || unsafe.includes(process.env.JWT_REFRESH_SECRET)) {
+      throw new Error("Unsafe JWT secrets are not allowed in production");
+    }
+  }
+}
+
 async function bootstrap() {
+  assertProductionSecrets();
   const app = await NestFactory.create(AppModule);
   const logger = new Logger("Bootstrap");
   const uploadDir = process.env.UPLOAD_DIR ?? "uploads";
@@ -42,17 +52,45 @@ async function bootstrap() {
   app.use(compression());
   app.use("/uploads", express.static(uploadPath));
 
-  const corsOrigins = (process.env.CORS_ORIGIN ?? "http://localhost:8080,http://localhost:5173")
+  const defaultCorsOrigins = [
+    "http://localhost:8080",
+    "http://127.0.0.1:8080",
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+    "http://localhost:5174",
+    "http://127.0.0.1:5174",
+    "http://localhost:4173",
+    "http://127.0.0.1:4173"
+  ];
+
+  const corsOrigins = (process.env.CORS_ORIGIN ?? defaultCorsOrigins.join(","))
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
 
+  const devOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
+
   app.enableCors({
-    origin: corsOrigins,
+    origin(origin, callback) {
+      if (!origin) {
+        callback(null, true);
+        return;
+      }
+
+      if (corsOrigins.includes(origin) || (process.env.NODE_ENV !== "production" && devOriginPattern.test(origin))) {
+        callback(null, true);
+        return;
+      }
+
+      callback(new Error(`Origem não permitida pelo CORS: ${origin}`));
+    },
     credentials: true,
     allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    optionsSuccessStatus: 204
   });
+
+  logger.log(`CORS enabled for: ${corsOrigins.join(", ")}`);
 
   app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalPipes(

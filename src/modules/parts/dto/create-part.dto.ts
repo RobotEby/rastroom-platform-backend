@@ -96,6 +96,12 @@ export class CreatePartDto {
   @IsArray()
   @IsEnum(ProcessType, { each: true })
   selected_processes?: ProcessType[];
+
+  @ApiPropertyOptional({ description: "Process template used to generate the operational route for this part" })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  process_template_id?: string;
 }
 
 export class ImportPartRowDto extends OmitType(CreatePartDto, ["furniture_id"] as const) {}
@@ -116,4 +122,10 @@ export class ImportPartsDto {
   @IsArray()
   @IsEnum(ProcessType, { each: true })
   processes?: ProcessType[];
+
+  @ApiPropertyOptional({ description: "Process template applied to every imported part when row-level processes are not provided" })
+  @IsOptional()
+  @Transform(emptyToUndefined)
+  @IsUUID()
+  process_template_id?: string;
 }

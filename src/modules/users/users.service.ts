@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, UnauthorizedException } from "@nestjs/
 import { Prisma } from "@prisma/client";
 import * as argon2 from "argon2";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
+import { normalizePagination } from "../../common/utils/pagination";
 import { sanitizeUser } from "../../common/utils/sanitize-user";
 import { PrismaService } from "../../database/prisma.service";
 import { ChangePasswordDto } from "./dto/change-password.dto";
@@ -13,13 +14,14 @@ export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
   async findAll(query: PaginationQueryDto) {
+    const pagination = normalizePagination(query, ["created_at", "updated_at", "email", "full_name"], { maxLimit: 500 });
     const where: Prisma.UserWhereInput = {
       deleted_at: null,
-      ...(query.search
+      ...(pagination.search
         ? {
             OR: [
-              { email: { contains: query.search, mode: "insensitive" } },
-              { full_name: { contains: query.search, mode: "insensitive" } }
+              { email: { contains: pagination.search, mode: "insensitive" } },
+              { full_name: { contains: pagination.search, mode: "insensitive" } }
             ]
           }
         : {})
@@ -27,9 +29,9 @@ export class UsersService {
 
     const users = await this.prisma.user.findMany({
       where,
-      orderBy: { [query.sortBy ?? "created_at"]: query.sortOrder ?? "desc" },
-      skip: ((query.page ?? 1) - 1) * (query.limit ?? 50),
-      take: query.limit ?? 50
+      orderBy: { [pagination.sortBy]: pagination.sortOrder },
+      skip: pagination.skip,
+      take: pagination.limit
     });
 
     return users.map(sanitizeUser);

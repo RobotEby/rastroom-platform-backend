@@ -18,45 +18,45 @@ import { OrdersService } from "./orders.service";
 export class OrdersController {
   constructor(private readonly orders: OrdersService) {}
 
-  @Roles("admin", "supervisor", "montagem")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "maker", "developer", "montagem")
   @Get()
-  findAll(@Query() query: PaginationQueryDto & { status?: OrderStatus }) {
-    return this.orders.findAll(query);
+  findAll(@Query() query: PaginationQueryDto & { status?: OrderStatus }, @CurrentUser() user: RequestUser) {
+    return this.orders.findAll(query, user.organization_id);
   }
 
-  @Roles("admin", "supervisor", "montagem")
+  @Roles("owner", "admin", "supervisor", "montagem", "developer")
   @Get("ready")
-  ready() {
-    return this.orders.findReadyForExpedition();
+  ready(@CurrentUser() user: RequestUser) {
+    return this.orders.findReadyForExpedition(user.organization_id);
   }
 
-  @Roles("admin", "supervisor", "montagem")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "maker", "developer", "montagem")
   @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.orders.findOne(id);
+  findOne(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.orders.findOne(id, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "developer", "maker")
   @Post()
   create(@Body() dto: CreateOrderDto, @CurrentUser() user: RequestUser) {
-    return this.orders.create(dto, user.id);
+    return this.orders.create(dto, user.id, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "developer")
   @Patch(":id")
-  update(@Param("id") id: string, @Body() dto: UpdateOrderDto) {
-    return this.orders.update(id, dto);
+  update(@Param("id") id: string, @Body() dto: UpdateOrderDto, @CurrentUser() user: RequestUser) {
+    return this.orders.update(id, dto, user.organization_id);
   }
 
-  @Roles("admin", "montagem")
+  @Roles("owner", "admin", "supervisor", "montagem", "maker", "developer")
   @Patch(":id/status")
-  updateStatus(@Param("id") id: string, @Body() dto: UpdateOrderStatusDto) {
-    return this.orders.updateStatus(id, dto);
+  updateStatus(@Param("id") id: string, @Body() dto: UpdateOrderStatusDto, @CurrentUser() user: RequestUser) {
+    return this.orders.updateStatus(id, dto, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "developer")
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.orders.remove(id);
+  remove(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.orders.remove(id, user.organization_id);
   }
 }

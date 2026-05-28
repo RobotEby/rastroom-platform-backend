@@ -27,12 +27,19 @@ export class AuthService {
     if (existing) throw new ConflictException("E-mail already registered");
 
     const password_hash = await argon2.hash(dto.password);
+    const organization = await this.prisma.organization.create({
+      data: {
+        name: dto.organization_name?.trim() || `${dto.full_name || dto.email.split("@")[0]} Workspace`,
+        slug: await this.createOrganizationSlug(dto.organization_name || dto.email)
+      }
+    });
     const user = await this.prisma.user.create({
       data: {
         email: dto.email.toLowerCase(),
         full_name: dto.full_name,
         password_hash,
-        roles: ["operator"]
+        organization_id: organization.id,
+        roles: ["owner", "admin", "supervisor"]
       }
     });
 
@@ -144,8 +151,23 @@ export class AuthService {
     return { message: "Password updated" };
   }
 
+  private async createOrganizationSlug(seed: string) {
+    const base = seed
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "")
+      .slice(0, 40) || "workspace";
+    let slug = base;
+    let suffix = 1;
+    while (await this.prisma.organization.findUnique({ where: { slug } })) {
+      suffix += 1;
+      slug = `${base}-${suffix}`;
+    }
+    return slug;
+  }
+
   private async buildSession(user: User) {
-    const payload = { sub: user.id, email: user.email, roles: user.roles };
+    const payload = { sub: user.id, email: user.email, roles: user.roles, organization_id: user.organization_id };
     const access_token = await this.jwt.signAsync(payload, {
       secret: this.config.get<string>("JWT_ACCESS_SECRET") ?? "dev-access-secret",
       expiresIn: this.config.get<string>("JWT_ACCESS_EXPIRES_IN") ?? "15m"

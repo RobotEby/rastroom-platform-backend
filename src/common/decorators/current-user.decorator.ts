@@ -5,6 +5,7 @@ export type RequestUser = {
   email: string;
   full_name?: string | null;
   roles: string[];
+  organization_id?: string | null;
 };
 
 export const CurrentUser = createParamDecorator(

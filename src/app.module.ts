@@ -15,6 +15,7 @@ import { ExpeditionModule } from "./modules/expedition/expedition.module";
 import { DashboardModule } from "./modules/dashboard/dashboard.module";
 import { UploadsModule } from "./modules/uploads/uploads.module";
 import { NotificationsModule } from "./modules/notifications/notifications.module";
+import { PlatformModule } from "./modules/platform/platform.module";
 import { HealthController } from "./health.controller";
 
 @Module({
@@ -38,7 +39,8 @@ import { HealthController } from "./health.controller";
     ExpeditionModule,
     DashboardModule,
     UploadsModule,
-    NotificationsModule
+    NotificationsModule,
+    PlatformModule
   ],
   controllers: [HealthController],
   providers: [

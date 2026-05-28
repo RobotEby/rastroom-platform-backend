@@ -1,6 +1,7 @@
-import { Injectable } from "@nestjs/common";
+import { ConflictException, Injectable } from "@nestjs/common";
 import { OrderStatus, Prisma } from "@prisma/client";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
+import { normalizePagination } from "../../common/utils/pagination";
 import { PrismaService } from "../../database/prisma.service";
 import { CreateOrderDto } from "./dto/create-order.dto";
 import { UpdateOrderStatusDto } from "./dto/update-order-status.dto";
@@ -10,16 +11,18 @@ import { UpdateOrderDto } from "./dto/update-order.dto";
 export class OrdersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(query: PaginationQueryDto & { status?: OrderStatus }) {
+  findAll(query: PaginationQueryDto & { status?: OrderStatus }, organizationId?: string | null) {
+    const pagination = normalizePagination(query, ["created_at", "updated_at", "code", "status", "estimated_delivery"], { maxLimit: 500 });
     const where: Prisma.OrderWhereInput = {
       deleted_at: null,
+      ...(organizationId ? { organization_id: organizationId } : {}),
       ...(query.status ? { status: query.status } : {}),
-      ...(query.search
+      ...(pagination.search
         ? {
             OR: [
-              { code: { contains: query.search, mode: "insensitive" } },
-              { description: { contains: query.search, mode: "insensitive" } },
-              { clients: { name: { contains: query.search, mode: "insensitive" } } }
+              { code: { contains: pagination.search, mode: "insensitive" } },
+              { description: { contains: pagination.search, mode: "insensitive" } },
+              { clients: { name: { contains: pagination.search, mode: "insensitive" } } }
             ]
           }
         : {})
@@ -28,15 +31,15 @@ export class OrdersService {
     return this.prisma.order.findMany({
       where,
       include: { clients: true },
-      orderBy: { [query.sortBy ?? "created_at"]: query.sortOrder ?? "desc" },
-      skip: ((query.page ?? 1) - 1) * (query.limit ?? 50),
-      take: query.limit ?? 50
+      orderBy: { [pagination.sortBy]: pagination.sortOrder },
+      skip: pagination.skip,
+      take: pagination.limit
     });
   }
 
-  findOne(id: string) {
+  findOne(id: string, organizationId?: string | null) {
     return this.prisma.order.findFirstOrThrow({
-      where: { id, deleted_at: null },
+      where: { id, deleted_at: null, ...(organizationId ? { organization_id: organizationId } : {}) },
       include: {
         clients: true,
         furniture: {
@@ -48,9 +51,18 @@ export class OrdersService {
     });
   }
 
-  create(dto: CreateOrderDto, userId?: string) {
+  async create(dto: CreateOrderDto, userId?: string, organizationId?: string | null) {
+    if (organizationId) {
+      await this.prisma.client.findFirstOrThrow({ where: { id: dto.client_id, organization_id: organizationId, deleted_at: null } });
+      const existing = await this.prisma.order.findFirst({
+        where: { organization_id: organizationId, code: dto.code, deleted_at: null }
+      });
+      if (existing) throw new ConflictException("Order code already exists in this workspace");
+    }
+
     return this.prisma.order.create({
       data: {
+        organization_id: organizationId ?? undefined,
         client_id: dto.client_id,
         code: dto.code,
         description: dto.description,
@@ -62,7 +74,15 @@ export class OrdersService {
     });
   }
 
-  update(id: string, dto: UpdateOrderDto) {
+  async update(id: string, dto: UpdateOrderDto, organizationId?: string | null) {
+    const current = await this.findOne(id, organizationId);
+    if (organizationId && dto.client_id) {
+      await this.prisma.client.findFirstOrThrow({ where: { id: dto.client_id, organization_id: organizationId, deleted_at: null } });
+    }
+    if (organizationId && dto.code && dto.code !== current.code) {
+      const existing = await this.prisma.order.findFirst({ where: { organization_id: organizationId, code: dto.code, deleted_at: null, id: { not: id } } });
+      if (existing) throw new ConflictException("Order code already exists in this workspace");
+    }
     return this.prisma.order.update({
       where: { id },
       data: {
@@ -81,7 +101,8 @@ export class OrdersService {
     });
   }
 
-  updateStatus(id: string, dto: UpdateOrderStatusDto) {
+  async updateStatus(id: string, dto: UpdateOrderStatusDto, organizationId?: string | null) {
+    await this.findOne(id, organizationId);
     return this.prisma.order.update({
       where: { id },
       data: { status: dto.status },
@@ -89,10 +110,11 @@ export class OrdersService {
     });
   }
 
-  findReadyForExpedition() {
+  findReadyForExpedition(organizationId?: string | null) {
     return this.prisma.order.findMany({
       where: {
         deleted_at: null,
+        ...(organizationId ? { organization_id: organizationId } : {}),
         status: { in: ["pronto", "montagem", "expedido"] }
       },
       include: { clients: true },
@@ -100,7 +122,8 @@ export class OrdersService {
     });
   }
 
-  async remove(id: string) {
+  async remove(id: string, organizationId?: string | null) {
+    await this.findOne(id, organizationId);
     await this.prisma.order.update({
       where: { id },
       data: { deleted_at: new Date() }

@@ -8,9 +8,12 @@ import { StartProcessDto } from "./dto/start-process.dto";
 export class ProcessesService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findForPart(partId: string) {
+  findForPart(partId: string, organizationId?: string | null) {
     return this.prisma.process.findMany({
-      where: { part_id: partId },
+      where: {
+        part_id: partId,
+        ...(organizationId ? { parts: { furniture: { orders: { organization_id: organizationId } } } } : {})
+      },
       orderBy: { sequence_order: "asc" },
       include: {
         execution_logs: {
@@ -21,11 +24,14 @@ export class ProcessesService {
     });
   }
 
-  async startProcess(processId: string, userId: string, dto: StartProcessDto) {
-    const process = await this.prisma.process.findUniqueOrThrow({
-      where: { id: processId },
+  async startProcess(processId: string, userId: string, dto: StartProcessDto, organizationId?: string | null) {
+    const process = await this.prisma.process.findFirstOrThrow({
+      where: {
+        id: processId,
+        ...(organizationId ? { parts: { furniture: { orders: { organization_id: organizationId } } } } : {})
+      },
       include: {
-        parts: true,
+        parts: { include: { furniture: true } },
         execution_logs: true
       }
     });
@@ -48,7 +54,10 @@ export class ProcessesService {
     const activeLog = await this.prisma.executionLog.findFirst({
       where: {
         status: "em_execucao",
-        processes: { part_id: process.part_id }
+        processes: {
+          part_id: process.part_id,
+          ...(organizationId ? { parts: { furniture: { orders: { organization_id: organizationId } } } } : {})
+        }
       }
     });
     if (activeLog) {
@@ -81,10 +90,13 @@ export class ProcessesService {
     return log;
   }
 
-  async finishLog(logId: string, dto: FinishProcessDto) {
+  async finishLog(logId: string, dto: FinishProcessDto, organizationId?: string | null) {
     return this.prisma.$transaction(async (tx) => {
-      const log = await tx.executionLog.findUniqueOrThrow({
-        where: { id: logId },
+      const log = await tx.executionLog.findFirstOrThrow({
+        where: {
+          id: logId,
+          ...(organizationId ? { processes: { parts: { furniture: { orders: { organization_id: organizationId } } } } } : {})
+        },
         include: { processes: { include: { parts: { include: { furniture: true } } } } }
       });
 
@@ -109,7 +121,7 @@ export class ProcessesService {
       });
 
       await this.updatePartProgress(tx, log.processes.part_id);
-      await this.updateOrderIfReady(tx, log.processes.parts.furniture.order_id);
+      await this.updateOrderIfReady(tx, log.processes.parts.furniture.order_id, organizationId);
 
       return updated;
     });
@@ -126,19 +138,17 @@ export class ProcessesService {
       (process) => !process.execution_logs.some((log) => log.status === "concluido")
     );
 
-    if (next) {
-      await tx.part.update({
-        where: { id: partId },
-        data: { current_process: next.process_type }
-      });
-    }
+    await tx.part.update({
+      where: { id: partId },
+      data: { current_process: next?.process_type ?? "expedicao" }
+    });
   }
 
-  private async updateOrderIfReady(tx: Prisma.TransactionClient, orderId: string) {
+  private async updateOrderIfReady(tx: Prisma.TransactionClient, orderId: string, organizationId?: string | null) {
     const parts = await tx.part.findMany({
       where: {
         deleted_at: null,
-        furniture: { order_id: orderId }
+        furniture: { order_id: orderId, orders: { ...(organizationId ? { organization_id: organizationId } : {}) } }
       },
       include: {
         processes: { include: { execution_logs: true } }
@@ -156,7 +166,7 @@ export class ProcessesService {
 
     if (allReady) {
       await tx.order.updateMany({
-        where: { id: orderId, status: { notIn: ["expedido"] } },
+        where: { id: orderId, ...(organizationId ? { organization_id: organizationId } : {}), status: { notIn: ["expedido"] } },
         data: { status: "pronto" }
       });
     }

@@ -14,6 +14,11 @@ enum AppRole {
   operador
   montagem
   supervisor
+  owner
+  maker
+  seller
+  engineer
+  developer
 }
 
 enum OrderStatus {
@@ -44,13 +49,66 @@ enum NotificationType {
   order_expedited
   kit_completed
   process_alert
+  order_created
+  order_delayed
+  defect_reported
+  checklist_completed
+  document_generated
+  offline_sync_failed
 }
 
 enum NotificationStatus {
   pending
   sent
   failed
+  read
 }
+
+
+enum DocumentType {
+  order_summary
+  shipping_receipt
+  part_label
+  checklist
+  technical_sheet
+  defect_report
+}
+
+enum DocumentStatus {
+  draft
+  generated
+  archived
+}
+
+enum DefectSeverity {
+  low
+  medium
+  high
+  critical
+}
+
+enum DefectStatus {
+  open
+  in_rework
+  resolved
+  scrapped
+}
+
+enum OfflineSyncStatus {
+  queued
+  processed
+  failed
+}
+
+enum AttachmentEntityType {
+  order
+  furniture
+  part
+  process_log
+  defect_report
+  checklist
+}
+
 
 model User {
   id                     String         @id @default(uuid()) @db.Uuid
@@ -58,6 +116,7 @@ model User {
   password_hash          String
   full_name              String?
   roles                  AppRole[]      @default([operator])
+  organization_id        String?        @db.Uuid
   is_active              Boolean        @default(true)
   refresh_token_hash     String?
   reset_token_hash       String?
@@ -66,18 +125,22 @@ model User {
   updated_at             DateTime       @updatedAt @default(now())
   deleted_at             DateTime?
 
+  organization   Organization? @relation(fields: [organization_id], references: [id], onDelete: SetNull)
   orders_created Order[]        @relation("OrderCreator")
   execution_logs ExecutionLog[]
   uploads        Upload[]
   audit_logs     AuditLog[]
+  notifications  Notification[] @relation("NotificationRecipient")
 
   @@index([email])
+  @@index([organization_id])
   @@index([deleted_at])
   @@map("users")
 }
 
 model Client {
   id         String    @id @default(uuid()) @db.Uuid
+  organization_id String?   @db.Uuid
   name       String
   email      String?
   phone      String?
@@ -87,8 +150,10 @@ model Client {
   updated_at DateTime  @updatedAt @default(now())
   deleted_at DateTime?
 
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   orders Order[]
 
+  @@index([organization_id])
   @@index([name])
   @@index([email])
   @@index([deleted_at])
@@ -97,8 +162,9 @@ model Client {
 
 model Order {
   id                 String      @id @default(uuid()) @db.Uuid
+  organization_id    String?     @db.Uuid
   client_id          String      @db.Uuid
-  code               String      @unique
+  code               String
   description        String?
   status             OrderStatus @default(rascunho)
   estimated_delivery DateTime?
@@ -107,11 +173,16 @@ model Order {
   updated_at         DateTime    @updatedAt @default(now())
   deleted_at         DateTime?
 
+  organization  Organization?  @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   clients       Client         @relation(fields: [client_id], references: [id], onDelete: Restrict)
   users         User?          @relation("OrderCreator", fields: [created_by], references: [id], onDelete: SetNull)
   furniture     Furniture[]
   notifications Notification[]
+  documents     Document[]
+  checklist_runs ChecklistRun[]
 
+  @@index([organization_id])
+  @@unique([organization_id, code])
   @@index([client_id])
   @@index([status])
   @@index([estimated_delivery])
@@ -143,7 +214,7 @@ model Part {
   id                String       @id @default(uuid()) @db.Uuid
   furniture_id      String       @db.Uuid
   parent_part_id    String?      @db.Uuid
-  code              String       @unique
+  code              String
   name              String
   is_mother_part    Boolean      @default(false)
   width_mm          Float?
@@ -165,6 +236,8 @@ model Part {
   parent_part Part?     @relation("PartChildren", fields: [parent_part_id], references: [id], onDelete: SetNull)
   child_parts Part[]    @relation("PartChildren")
   processes   Process[]
+  defect_reports DefectReport[]
+  checklist_runs ChecklistRun[]
 
   @@index([furniture_id])
   @@index([parent_part_id])
@@ -216,7 +289,9 @@ model ExecutionLog {
 
 model Notification {
   id              String             @id @default(uuid()) @db.Uuid
+  organization_id String?            @db.Uuid
   order_id        String?            @db.Uuid
+  recipient_id    String?            @db.Uuid
   recipient_email String?
   type            NotificationType
   status          NotificationStatus @default(pending)
@@ -225,9 +300,13 @@ model Notification {
   created_at      DateTime           @default(now())
   updated_at      DateTime           @updatedAt @default(now())
 
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   orders Order? @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  recipient User? @relation("NotificationRecipient", fields: [recipient_id], references: [id], onDelete: SetNull)
 
+  @@index([organization_id])
   @@index([order_id])
+  @@index([recipient_id])
   @@index([status])
   @@map("notifications")
 }
@@ -243,6 +322,7 @@ model Upload {
   created_at    DateTime @default(now())
 
   users User? @relation(fields: [owner_id], references: [id], onDelete: SetNull)
+  attachments Attachment[]
 
   @@index([owner_id])
   @@map("uploads")
@@ -250,6 +330,7 @@ model Upload {
 
 model AuditLog {
   id         String   @id @default(uuid()) @db.Uuid
+  organization_id String? @db.Uuid
   actor_id   String?  @db.Uuid
   action     String
   entity     String
@@ -257,9 +338,212 @@ model AuditLog {
   metadata   Json?
   created_at DateTime @default(now())
 
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
   users User? @relation(fields: [actor_id], references: [id], onDelete: SetNull)
 
+  @@index([organization_id])
   @@index([actor_id])
   @@index([entity, entity_id])
   @@map("audit_logs")
+}
+
+
+model Organization {
+  id         String   @id @default(uuid()) @db.Uuid
+  name       String
+  slug       String   @unique
+  is_active  Boolean  @default(true)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt @default(now())
+
+  users User[]
+  clients Client[]
+  orders Order[]
+  process_templates ProcessTemplate[]
+  checklist_templates ChecklistTemplate[]
+  notifications Notification[]
+  audit_logs AuditLog[]
+  documents Document[]
+  defect_reports DefectReport[]
+  offline_sync_events OfflineSyncEvent[]
+
+  @@index([slug])
+  @@map("organizations")
+}
+
+model ProcessTemplate {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  name            String
+  description     String?
+  is_default      Boolean  @default(false)
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+  updated_at      DateTime @updatedAt @default(now())
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  steps ProcessTemplateStep[]
+
+  @@index([organization_id])
+  @@index([is_active])
+  @@map("process_templates")
+}
+
+model ProcessTemplateStep {
+  id                     String      @id @default(uuid()) @db.Uuid
+  template_id            String      @db.Uuid
+  process_type           ProcessType
+  label                  String
+  sequence_order         Int
+  estimated_time_minutes Int?
+  requires_checklist     Boolean     @default(false)
+
+  template ProcessTemplate @relation(fields: [template_id], references: [id], onDelete: Cascade)
+
+  @@unique([template_id, sequence_order])
+  @@index([template_id])
+  @@map("process_template_steps")
+}
+
+model Attachment {
+  id          String               @id @default(uuid()) @db.Uuid
+  upload_id   String               @db.Uuid
+  entity_type AttachmentEntityType
+  entity_id   String
+  caption     String?
+  created_at  DateTime             @default(now())
+
+  upload Upload @relation(fields: [upload_id], references: [id], onDelete: Cascade)
+
+  @@index([entity_type, entity_id])
+  @@index([upload_id])
+  @@map("attachments")
+}
+
+model DefectReport {
+  id              String         @id @default(uuid()) @db.Uuid
+  organization_id String?        @db.Uuid
+  part_id         String         @db.Uuid
+  reported_by     String?        @db.Uuid
+  title           String
+  description     String?
+  severity        DefectSeverity @default(medium)
+  status          DefectStatus   @default(open)
+  rework_notes    String?
+  resolved_at     DateTime?
+  created_at      DateTime       @default(now())
+  updated_at      DateTime       @updatedAt @default(now())
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  part Part @relation(fields: [part_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id])
+  @@index([part_id])
+  @@index([status])
+  @@map("defect_reports")
+}
+
+model ChecklistTemplate {
+  id              String   @id @default(uuid()) @db.Uuid
+  organization_id String?  @db.Uuid
+  name            String
+  description     String?
+  is_active       Boolean  @default(true)
+  created_at      DateTime @default(now())
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  items ChecklistTemplateItem[]
+  runs ChecklistRun[]
+
+  @@index([organization_id])
+  @@map("checklist_templates")
+}
+
+model ChecklistTemplateItem {
+  id          String @id @default(uuid()) @db.Uuid
+  template_id String @db.Uuid
+  label       String
+  required    Boolean @default(true)
+  sort_order  Int
+
+  template ChecklistTemplate @relation(fields: [template_id], references: [id], onDelete: Cascade)
+
+  @@index([template_id])
+  @@map("checklist_template_items")
+}
+
+model ChecklistRun {
+  id          String   @id @default(uuid()) @db.Uuid
+  template_id String?  @db.Uuid
+  order_id    String?  @db.Uuid
+  part_id     String?  @db.Uuid
+  completed_by String? @db.Uuid
+  completed_at DateTime?
+  created_at  DateTime @default(now())
+
+  template ChecklistTemplate? @relation(fields: [template_id], references: [id], onDelete: SetNull)
+  order Order? @relation(fields: [order_id], references: [id], onDelete: Cascade)
+  part Part? @relation(fields: [part_id], references: [id], onDelete: Cascade)
+  items ChecklistRunItem[]
+
+  @@index([template_id])
+  @@index([order_id])
+  @@index([part_id])
+  @@map("checklist_runs")
+}
+
+model ChecklistRunItem {
+  id          String  @id @default(uuid()) @db.Uuid
+  run_id      String  @db.Uuid
+  label       String
+  checked     Boolean @default(false)
+  notes       String?
+  sort_order  Int
+
+  run ChecklistRun @relation(fields: [run_id], references: [id], onDelete: Cascade)
+
+  @@index([run_id])
+  @@map("checklist_run_items")
+}
+
+model Document {
+  id              String         @id @default(uuid()) @db.Uuid
+  organization_id String?        @db.Uuid
+  order_id        String?        @db.Uuid
+  type            DocumentType
+  status          DocumentStatus @default(generated)
+  title           String
+  content         Json
+  generated_by    String?        @db.Uuid
+  created_at      DateTime       @default(now())
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+  order Order? @relation(fields: [order_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id])
+  @@index([order_id])
+  @@index([type])
+  @@map("documents")
+}
+
+model OfflineSyncEvent {
+  id              String            @id @default(uuid()) @db.Uuid
+  organization_id String?           @db.Uuid
+  device_id       String
+  user_id         String?           @db.Uuid
+  event_key       String            @unique
+  entity          String
+  action          String
+  payload         Json
+  status          OfflineSyncStatus @default(queued)
+  error_message   String?
+  processed_at    DateTime?
+  created_at      DateTime          @default(now())
+
+  organization Organization? @relation(fields: [organization_id], references: [id], onDelete: Cascade)
+
+  @@index([organization_id])
+  @@index([device_id])
+  @@index([status])
+  @@map("offline_sync_events")
 }

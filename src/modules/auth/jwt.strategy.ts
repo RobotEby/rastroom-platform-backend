@@ -9,6 +9,7 @@ export type JwtPayload = {
   sub: string;
   email: string;
   roles: string[];
+  organization_id?: string | null;
 };
 
 @Injectable()
@@ -20,7 +21,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>("JWT_ACCESS_SECRET") ?? "dev-access-secret"
+      secretOrKey: config.get<string>("JWT_ACCESS_SECRET") ?? (process.env.NODE_ENV === "production" ? (() => { throw new Error("JWT_ACCESS_SECRET is required"); })() : "dev-access-secret")
     });
   }
 

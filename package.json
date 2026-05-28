@@ -16,7 +16,16 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "staging:check": "node scripts/staging-smoke-check.js",
+    "release:check": "npm run lint && npm test && npm run build && npx prisma validate && npm run demo:check",
+    "seed:demo": "npm run prisma:seed",
+    "demo:check": "node scripts/demo-seed-check.js",
+    "homologation:check": "node scripts/homologation-check.js",
+    "staging:demo": "npm run prisma:deploy && npm run seed:demo && npm run homologation:check",
+    "commit:atomic": "node scripts/atomic-commits.mjs",
+    "commit:atomic:auto": "node scripts/atomic-commits.mjs --yes",
+    "commit:atomic:dry": "node scripts/atomic-commits.mjs --dry-run"
   },
   "prisma": {
     "seed": "ts-node -r tsconfig-paths/register prisma/seed.ts"

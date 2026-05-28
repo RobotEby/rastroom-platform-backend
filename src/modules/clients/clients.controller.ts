@@ -1,5 +1,6 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Query, UseGuards } from "@nestjs/common";
 import { ApiBearerAuth, ApiTags } from "@nestjs/swagger";
+import { CurrentUser, RequestUser } from "../../common/decorators/current-user.decorator";
 import { Roles } from "../../common/decorators/roles.decorator";
 import { PaginationQueryDto } from "../../common/dto/pagination-query.dto";
 import { JwtAuthGuard } from "../../common/guards/jwt-auth.guard";
@@ -15,33 +16,33 @@ import { UpdateClientDto } from "./dto/update-client.dto";
 export class ClientsController {
   constructor(private readonly clients: ClientsService) {}
 
-  @Roles("admin", "supervisor")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "developer")
   @Get()
-  findAll(@Query() query: PaginationQueryDto) {
-    return this.clients.findAll(query);
+  findAll(@Query() query: PaginationQueryDto, @CurrentUser() user: RequestUser) {
+    return this.clients.findAll(query, user.organization_id);
   }
 
-  @Roles("admin", "supervisor")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "developer")
   @Get(":id")
-  findOne(@Param("id") id: string) {
-    return this.clients.findOne(id);
+  findOne(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.clients.findOne(id, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "developer")
   @Post()
-  create(@Body() dto: CreateClientDto) {
-    return this.clients.create(dto);
+  create(@Body() dto: CreateClientDto, @CurrentUser() user: RequestUser) {
+    return this.clients.create(dto, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "seller", "engineer", "developer")
   @Patch(":id")
-  update(@Param("id") id: string, @Body() dto: UpdateClientDto) {
-    return this.clients.update(id, dto);
+  update(@Param("id") id: string, @Body() dto: UpdateClientDto, @CurrentUser() user: RequestUser) {
+    return this.clients.update(id, dto, user.organization_id);
   }
 
-  @Roles("admin")
+  @Roles("owner", "admin", "supervisor", "developer")
   @Delete(":id")
-  remove(@Param("id") id: string) {
-    return this.clients.remove(id);
+  remove(@Param("id") id: string, @CurrentUser() user: RequestUser) {
+    return this.clients.remove(id, user.organization_id);
   }
 }

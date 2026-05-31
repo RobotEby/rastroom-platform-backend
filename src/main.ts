@@ -71,24 +71,28 @@ async function bootstrap() {
   const devOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
 
   app.enableCors({
-    origin(origin, callback) {
-      if (!origin) {
-        callback(null, true);
-        return;
-      }
+  origin(origin, callback) {
+    if (!origin) {
+      callback(null, true);
+      return;
+    }
 
-      if (corsOrigins.includes(origin) || (process.env.NODE_ENV !== "production" && devOriginPattern.test(origin))) {
-        callback(null, true);
-        return;
-      }
+    const isAllowedOrigin = corsOrigins.includes(origin);
+    const isAllowedDevOrigin = process.env.NODE_ENV !== "production" && devOriginPattern.test(origin);
 
-      callback(new Error(`Origem não permitida pelo CORS: ${origin}`));
-    },
-    credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    optionsSuccessStatus: 204
-  });
+    if (isAllowedOrigin || isAllowedDevOrigin) {
+      callback(null, true);
+      return;
+    }
+
+    logger.warn(`CORS blocked origin: ${origin}`);
+    callback(null, false);
+  },
+  credentials: true,
+  allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
+  methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 204
+});
 
   logger.log(`CORS enabled for: ${corsOrigins.join(", ")}`);
 

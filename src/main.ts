@@ -122,6 +122,9 @@ async function bootstrap() {
 
   app.enableCors({
     origin(origin, callback) {
+      logger.log(`CORS request origin: ${origin ?? "no-origin"}`);
+      logger.log(`CORS allowed origins: ${corsOrigins.join(", ")}`);
+
       if (!origin) {
         callback(null, true);
         return;

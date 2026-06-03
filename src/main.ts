@@ -47,7 +47,7 @@ function parseCsvEnv(value: string | undefined) {
     .filter(Boolean);
 }
 
-function assertPublicOrigin(origin: string) {
+function normalizeCorsOrigin(origin: string) {
   let parsed: URL;
 
   try {
@@ -55,6 +55,12 @@ function assertPublicOrigin(origin: string) {
   } catch {
     throw new Error(`Invalid CORS_ORIGIN entry: ${origin}`);
   }
+
+  return parsed.origin;
+}
+
+function assertPublicOrigin(origin: string) {
+  const parsed = new URL(origin);
 
   if (localHostnames.has(parsed.hostname)) {
     throw new Error(`Local CORS_ORIGIN is not allowed in production: ${origin}`);
@@ -93,7 +99,7 @@ function assertProductionConfig() {
   }
   assertPublicDatabaseUrl(databaseUrl);
 
-  const corsOrigins = parseCsvEnv(process.env.CORS_ORIGIN);
+  const corsOrigins = parseCsvEnv(process.env.CORS_ORIGIN).map(normalizeCorsOrigin);
   if (corsOrigins.length === 0) {
     throw new Error("CORS_ORIGIN is required in production");
   }
@@ -117,7 +123,7 @@ async function bootstrap() {
   app.use(compression());
   app.use("/uploads", express.static(uploadPath));
 
-  const configuredCorsOrigins = parseCsvEnv(process.env.CORS_ORIGIN);
+  const configuredCorsOrigins = parseCsvEnv(process.env.CORS_ORIGIN).map(normalizeCorsOrigin);
   const corsOrigins = configuredCorsOrigins.length > 0 || process.env.NODE_ENV === "production" ? configuredCorsOrigins : localCorsOrigins;
 
   app.enableCors({

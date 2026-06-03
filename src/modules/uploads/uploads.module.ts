@@ -7,6 +7,13 @@ import { PrismaModule } from "../../database/prisma.module";
 import { UploadsController } from "./uploads.controller";
 import { UploadsService } from "./uploads.service";
 
+function getMaxUploadSizeBytes() {
+  const maxUploadSizeMb = Number(process.env.MAX_UPLOAD_SIZE_MB ?? 10);
+  return Number.isFinite(maxUploadSizeMb) && maxUploadSizeMb > 0
+    ? maxUploadSizeMb * 1024 * 1024
+    : 10 * 1024 * 1024;
+}
+
 @Module({
   imports: [
     PrismaModule,
@@ -15,7 +22,7 @@ import { UploadsService } from "./uploads.service";
         destination: process.env.UPLOAD_DIR ?? "uploads",
         filename: (_req, file, cb) => cb(null, `${randomUUID()}${extname(file.originalname)}`)
       }),
-      limits: { fileSize: Number(process.env.UPLOAD_MAX_BYTES ?? 10 * 1024 * 1024) }
+      limits: { fileSize: getMaxUploadSizeBytes() }
     })
   ],
   controllers: [UploadsController],

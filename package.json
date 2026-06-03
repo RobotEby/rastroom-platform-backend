@@ -4,6 +4,9 @@
   "private": true,
   "description": "Backend API for Rastroom production traceability.",
   "license": "UNLICENSED",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "nest start --watch",
     "build": "nest build",

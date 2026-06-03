@@ -5,6 +5,7 @@ import { DocumentBuilder, SwaggerModule } from "@nestjs/swagger";
 import helmet from "helmet";
 import compression from "compression";
 import express from "express";
+import type { NextFunction, Request, Response } from "express";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { AppModule } from "./app.module";
@@ -23,6 +24,8 @@ const localCorsOrigins = [
 
 const localHostnames = new Set(["localhost", "127.0.0.1", "0.0.0.0"]);
 const devOriginPattern = /^https?:\/\/(localhost|127\.0\.0\.1|0\.0\.0\.0)(:\d+)?$/;
+const corsAllowedHeaders = "Content-Type, Authorization, X-Requested-With";
+const corsAllowedMethods = "GET, HEAD, POST, PUT, PATCH, DELETE, OPTIONS";
 
 function validationExceptionFactory(errors: any[]) {
   const formatted = errors.flatMap((error) => {
@@ -57,6 +60,14 @@ function normalizeCorsOrigin(origin: string) {
   }
 
   return parsed.origin;
+}
+
+function tryNormalizeRequestOrigin(origin: string) {
+  try {
+    return normalizeCorsOrigin(origin);
+  } catch {
+    return origin;
+  }
 }
 
 function assertPublicOrigin(origin: string) {
@@ -126,31 +137,49 @@ async function bootstrap() {
   const configuredCorsOrigins = parseCsvEnv(process.env.CORS_ORIGIN).map(normalizeCorsOrigin);
   const corsOrigins = configuredCorsOrigins.length > 0 || process.env.NODE_ENV === "production" ? configuredCorsOrigins : localCorsOrigins;
 
-  app.enableCors({
-    origin(origin, callback) {
-      logger.log(`CORS request origin: ${origin ?? "no-origin"}`);
-      logger.log(`CORS allowed origins: ${corsOrigins.join(", ")}`);
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    const requestOrigin = Array.isArray(req.headers.origin) ? req.headers.origin[0] : req.headers.origin;
+    const normalizedRequestOrigin = requestOrigin ? tryNormalizeRequestOrigin(requestOrigin) : undefined;
 
-      if (!origin) {
-        callback(null, true);
+    logger.log(`CORS request origin: ${requestOrigin ?? "no-origin"}`);
+    logger.log(`CORS allowed origins: ${corsOrigins.join(", ")}`);
+
+    if (!requestOrigin) {
+      if (req.method === "OPTIONS") {
+        res.status(204).setHeader("Content-Length", "0").end();
         return;
       }
 
-      const isAllowedOrigin = corsOrigins.includes(origin);
-      const isAllowedDevOrigin = process.env.NODE_ENV !== "production" && devOriginPattern.test(origin);
+      next();
+      return;
+    }
 
-      if (isAllowedOrigin || isAllowedDevOrigin) {
-        callback(null, true);
+    const isAllowedOrigin = normalizedRequestOrigin ? corsOrigins.includes(normalizedRequestOrigin) : false;
+    const isAllowedDevOrigin = process.env.NODE_ENV !== "production" && devOriginPattern.test(requestOrigin);
+
+    if (isAllowedOrigin || isAllowedDevOrigin) {
+      res.setHeader("Access-Control-Allow-Origin", normalizedRequestOrigin ?? requestOrigin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Access-Control-Allow-Headers", corsAllowedHeaders);
+      res.setHeader("Access-Control-Allow-Methods", corsAllowedMethods);
+      res.setHeader("Vary", "Origin");
+
+      if (req.method === "OPTIONS") {
+        res.status(204).setHeader("Content-Length", "0").end();
         return;
       }
 
-      logger.warn(`CORS blocked origin: ${origin}`);
-      callback(null, false);
-    },
-    credentials: true,
-    allowedHeaders: ["Content-Type", "Authorization", "X-Requested-With"],
-    methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    optionsSuccessStatus: 204
+      next();
+      return;
+    }
+
+    logger.warn(`CORS blocked origin: ${requestOrigin}`);
+    if (req.method === "OPTIONS") {
+      res.status(204).setHeader("Content-Length", "0").end();
+      return;
+    }
+
+    next();
   });
 
   logger.log(`CORS enabled for: ${corsOrigins.join(", ")}`);
